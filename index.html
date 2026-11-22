@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<title>ctxedit</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1c1a; --muted: #6f6b64; --line: #dedad2; --soft: #efede8;
+  --accent: #1f5fbf; --danger: #b3261e; --ok: #1e7a46; --warn-bg: #fff4d6; --warn-ink: #6b4e00;
+  --strike: #a09a90; --sugg: #b25e00; --sugg-bg: #fff1dc; --err-bg: #fde7e5;
+  --k-user: #1f5fbf; --k-assistant: #c2571a; --k-tool_use: #7446b8; --k-tool_result: #0f7f7a;
+  --k-thinking: #8a7f99; --k-summary: #a57a00; --k-other: #9a968e;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17171a; --panel: #202024; --ink: #e9e7e2; --muted: #9c988f; --line: #34343a; --soft: #2a2a2f;
+    --accent: #7fb0ff; --danger: #ff8a80; --ok: #6fd39a; --warn-bg: #3d3212; --warn-ink: #f2d98a;
+    --strike: #6d6a64; --sugg: #ffb65c; --sugg-bg: #3a2c15; --err-bg: #44201d;
+    --k-user: #7fb0ff; --k-assistant: #f0935a; --k-tool_use: #b79cf0; --k-tool_result: #5fd0c9;
+    --k-thinking: #a79dba; --k-summary: #e0b84a; --k-other: #7d7a73;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+button, input, textarea { font: inherit; color: inherit; }
+button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+@media (prefers-color-scheme: dark) { button.primary { color: #10131a; } }
+button.link { border: 0; background: none; padding: 0 2px; color: var(--accent); }
+input[type=text], input[type=number], input[type=search] { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+input[type=number] { width: 5.5em; }
+.muted { color: var(--muted); }
+.hidden { display: none !important; }
+
+header { position: sticky; top: 0; z-index: 20; background: var(--bg); border-bottom: 1px solid var(--line); }
+.bar { display: flex; align-items: center; gap: 10px; padding: 8px 16px; flex-wrap: wrap; }
+.brand { font-weight: 700; letter-spacing: .02em; }
+.title { flex: 1 1 120px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.counter { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.counter b { font-weight: 650; }
+.counter .saved { color: var(--ok); }
+.bar2 { padding-top: 0; gap: 8px; }
+.seg { display: inline-flex; white-space: nowrap; }
+.seg button:first-child { border-radius: 6px 0 0 6px; }
+.seg button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; background: var(--panel); cursor: pointer; user-select: none; white-space: nowrap; }
+.chip i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.chip.off { opacity: .45; text-decoration: line-through; }
+.sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 2px; }
+label.inline { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+
+main { max-width: 1060px; margin: 0 auto; padding: 14px 16px 120px; }
+.banner { border-radius: 8px; padding: 9px 12px; margin: 0 0 10px; background: var(--warn-bg); color: var(--warn-ink); }
+.banner.err { background: var(--err-bg); color: var(--danger); }
+.banner.ok { background: var(--soft); color: var(--ink); border: 1px solid var(--line); }
+.banner ul { margin: 6px 0 0; padding-left: 18px; }
+.banner code, .cmd code { font-family: var(--mono); }
+
+/* picker */
+.project { margin: 0 0 18px; }
+.project h2 { font-size: 13px; font-weight: 650; margin: 0 0 6px; color: var(--muted); font-family: var(--mono); word-break: break-all; }
+.project.here h2 { color: var(--ink); }
+.row { display: grid; grid-template-columns: 1fr 11em 6em 7.5em; gap: 12px; align-items: baseline; padding: 7px 12px; background: var(--panel); border: 1px solid var(--line); border-bottom-width: 0; cursor: pointer; }
+.row:first-of-type { border-radius: 8px 8px 0 0; }
+.row:last-of-type { border-bottom-width: 1px; border-radius: 0 0 8px 8px; }
+.row:only-of-type { border-radius: 8px; }
+.row:hover, .row:focus { outline: none; background: var(--soft); }
+.row.sel { box-shadow: inset 3px 0 0 var(--accent); }
+.row .p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+.rowhead { display: grid; grid-template-columns: 1fr 11em 6em 7.5em; gap: 12px; padding: 0 12px 4px; font-size: 12px; color: var(--muted); }
+.rowhead span:nth-child(n+2) { text-align: right; }
+
+/* groups */
+details.group { margin: 0 0 12px; border: 1px dashed var(--line); border-radius: 8px; padding: 6px 10px; }
+details.group > summary { cursor: pointer; color: var(--muted); }
+details.group[open] > summary { margin-bottom: 8px; }
+
+/* cards */
+.card { position: relative; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--k); border-radius: 8px; margin: 0 0 6px; content-visibility: auto; contain-intrinsic-size: auto 78px; }
+.card.k-user { --k: var(--k-user); } .card.k-assistant { --k: var(--k-assistant); }
+.card.k-tool_use { --k: var(--k-tool_use); } .card.k-tool_result { --k: var(--k-tool_result); }
+.card.k-thinking { --k: var(--k-thinking); } .card.k-summary { --k: var(--k-summary); } .card.k-other { --k: var(--k-other); }
+.card.pair-top { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.card.pair-bottom { border-top-left-radius: 0; border-top-right-radius: 0; border-top-style: dashed; }
+.card.pairhover { box-shadow: 0 0 0 2px var(--k-tool_use); }
+.card.sel-anchor { box-shadow: 0 0 0 2px var(--accent); }
+.card.err { box-shadow: 0 0 0 2px var(--danger); background: var(--err-bg); }
+.head { display: flex; align-items: center; gap: 8px; padding: 5px 8px 3px 10px; cursor: pointer; min-height: 30px; }
+.num { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; min-width: 2.6em; }
+.label { font-weight: 650; color: var(--k); white-space: nowrap; }
+.tool { font-family: var(--mono); font-size: 12.5px; }
+.tag { font-size: 11.5px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--muted); white-space: nowrap; }
+.tag.edited { color: var(--accent); border-color: var(--accent); }
+.tag.pair { cursor: pointer; }
+.tag.locked { border-style: dashed; }
+.meta { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.head button { padding: 1px 8px; font-size: 12.5px; }
+.dropbtn { min-width: 5.6em; }
+.body { padding: 0 10px 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.body.mono, .card.k-tool_use .body, .card.k-tool_result .body, .card.k-other .body { font-family: var(--mono); font-size: 12.5px; }
+.body.collapsed { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; max-height: 4.5em; padding-bottom: 0; margin-bottom: 8px; cursor: pointer; }
+.card.dropped { opacity: .55; background: var(--soft); }
+.card.dropped .body, .card.dropped .label, .card.dropped .tool { text-decoration: line-through; text-decoration-color: var(--strike); color: var(--muted); }
+.card.locked .head { cursor: pointer; }
+.unit { cursor: pointer; border-radius: 3px; }
+.unit:hover { background: var(--soft); box-shadow: 0 0 0 1px var(--line); }
+.unit.x { text-decoration: line-through; color: var(--strike); background: none; }
+.unit.code { display: block; font-family: var(--mono); font-size: 12.5px; background: var(--soft); padding: 6px 8px; margin: 4px 0; }
+.line { display: block; min-height: 1.45em; cursor: pointer; padding: 0 4px; border-radius: 2px; }
+.line:hover { background: var(--soft); }
+.line.x { text-decoration: line-through; color: var(--strike); }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 10px 8px; font-size: 12.5px; color: var(--muted); }
+.tools button { padding: 1px 8px; }
+.tools input[type=number] { width: 4.5em; padding: 1px 6px; }
+.editbox { padding: 0 10px 10px; }
+.editbox textarea { width: 100%; min-height: 9em; resize: vertical; background: var(--bg); border: 1px solid var(--accent); border-radius: 6px; padding: 8px; font-family: var(--mono); font-size: 12.5px; line-height: 1.45; }
+.editbox .btns { display: flex; gap: 8px; margin-top: 6px; }
+.sugg { display: flex; align-items: center; gap: 8px; padding: 5px 10px; background: var(--sugg-bg); color: var(--sugg); border-top: 1px solid var(--line); border-radius: 0 0 6px 0; font-size: 13px; }
+.sugg b { text-transform: uppercase; font-size: 11.5px; letter-spacing: .04em; }
+.sugg .why { flex: 1; color: var(--ink); }
+.sugg button { padding: 1px 8px; font-size: 12.5px; }
+.sugg-new { padding: 6px 10px 8px; background: var(--sugg-bg); font-size: 12.5px; }
+.sugg-new pre { margin: 4px 0 0; padding: 6px 8px; max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); background: var(--bg, transparent); border: 1px solid var(--line); border-radius: 4px; color: var(--ink); }
+.line.sx, .unit.sx { background: var(--sugg-bg); text-decoration: line-through; text-decoration-color: var(--sugg); }
+.card.has-sugg { border-color: var(--sugg); border-left-color: var(--k); }
+.empty { text-align: center; color: var(--muted); padding: 40px 0; }
+.foot { color: var(--muted); font-size: 12.5px; margin-top: 16px; }
+
+dialog { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); padding: 18px 20px; max-width: 560px; width: calc(100% - 40px); }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+dialog h3 { margin: 0 0 8px; font-size: 16px; }
+dialog p { margin: 8px 0; }
+dialog .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.cmd { display: flex; gap: 8px; align-items: center; background: var(--soft); border-radius: 6px; padding: 8px 10px; margin: 10px 0; }
+.cmd code { flex: 1; overflow-wrap: anywhere; user-select: all; }
+.spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: sp .8s linear infinite; vertical-align: -1px; }
+@keyframes sp { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <span class="brand">ctxedit</span>
+    <button id="back" class="hidden" title="Back to the session list">← Sessions</button>
+    <span id="title" class="title muted">Pick a session</span>
+    <span id="counter" class="counter hidden"></span>
+    <span id="editorButtons" class="hidden" style="display:flex;gap:8px;align-items:center">
+      <span class="seg">
+        <button id="suggest" title="A model marks steps that look safe to drop. It reads a preview of each step: the first 300 and last 100 characters.">Suggest cuts</button>
+        <button id="suggestFull" title="The model reads the full text of every step. It can then say which lines or sentences to cut, or propose a short replacement for a tool result. Slower and uses more tokens.">full text</button>
+      </span>
+      <span id="suggBar" class="hidden" style="display:flex;gap:6px;align-items:center;white-space:nowrap">
+        <span id="suggCount" style="color:var(--sugg)"></span>
+        <button id="acceptAll">Accept all</button>
+        <button id="dismissAll">Dismiss all</button>
+      </span>
+      <button id="undo" title="Undo (Ctrl+Z)">Undo</button>
+      <button id="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
+      <button id="save" class="primary" title="Write a new session next to the original. The original is not changed.">Save as fork</button>
+    </span>
+  </div>
+  <div id="bar2" class="bar bar2 hidden">
+    <span id="chips" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+    <input id="search" type="search" placeholder="Search steps…" style="flex:1 1 140px;min-width:120px">
+    <span class="sep"></span>
+    <label class="inline" title="Drop every tool result larger than this, together with its tool call">Drop results over
+      <input id="bulkN" type="number" min="0" step="500" value="2000"> tok</label>
+    <button id="bulk">Drop</button>
+    <span class="sep"></span>
+    <label class="inline" title="When part of a tool result is removed, leave this marker so the model knows the output is incomplete">
+      <input id="marker" type="checkbox" checked> mark trims <code id="markerText"></code></label>
+  </div>
+</header>
+
+<main>
+  <div id="banners"></div>
+  <section id="picker"></section>
+  <section id="editor" class="hidden">
+    <details id="gPre" class="group hidden"><summary></summary><div></div></details>
+    <div id="gLive"></div>
+    <div id="noMatch" class="empty hidden">No step matches the filter.</div>
+    <details id="gBranch" class="group hidden"><summary></summary><div></div></details>
+    <details id="gSide" class="group hidden"><summary></summary><div></div></details>
+    <div id="foot" class="foot"></div>
+  </section>
+</main>
+
+<dialog id="dlg"></dialog>
+
+<script>
+'use strict';
+const TOKEN = new URLSearchParams(location.search).get('t') || '';
+const $ = (id) => document.getElementById(id);
+const KINDS = ['user', 'assistant', 'tool_use', 'tool_result', 'thinking', 'summary', 'other'];
+const LABEL = {user: 'You', assistant: 'Claude', tool_use: 'Tool call', tool_result: 'Tool result', thinking: 'Thinking', summary: 'Summary', other: 'Other'};
+const MAX_UNITS = 4000;
+
+let doc = null, meta = null, steps = [], byId = {}, views = {}, cards = {}, counters = null;
+let expanded = new Set(), editing = new Set(), sugg = {}, offKinds = new Set(), searchIds = null;
+let anchor = null, errSteps = new Set(), savedAt = -1, busy = false;
+
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) {
+    const v = attrs[k];
+    if (v === null || v === undefined || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'text') e.textContent = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids) if (kid !== null && kid !== undefined && kid !== false) e.append(kid);
+  return e;
+}
+async function api(name, body, params) {
+  const qs = params ? '?' + new URLSearchParams(params) : '';
+  let res;
+  try {
+    res = await fetch('/api/' + name + qs, {
+      method: body ? 'POST' : 'GET',
+      headers: Object.assign({'X-Ctxedit-Token': TOKEN}, body ? {'Content-Type': 'application/json'} : {}),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {
+    throw new Error('The ctxedit server behind this tab is no longer running, so this tab is stale and nothing here can be saved. Start ctxedit again and use the new tab.');
+  }
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* fall through */ }
+  if (!res.ok) throw new Error((data && data.error) || ('request failed: ' + res.status));
+  return data;
+}
+function fill(parent, ...kids) { parent.replaceChildren(...kids.filter((k) => k !== null && k !== undefined && k !== false)); }
+function tok(n) {
+  if (n >= 100000) return Math.round(n / 1000) + 'k';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return String(n);
+}
+function when(ts) {
+  if (!ts) return '';
+  const d = new Date(typeof ts === 'number' ? ts * 1000 : ts);
+  if (isNaN(d)) return '';
+  return d.toLocaleString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: typeof ts === 'number' ? undefined : '2-digit'});
+}
+function ago(sec) {
+  if (sec < 90) return 'just now';
+  if (sec < 3600) return Math.round(sec / 60) + ' min ago';
+  if (sec < 86400 * 2) return Math.round(sec / 3600) + ' h ago';
+  return Math.round(sec / 86400) + ' days ago';
+}
+function banner(kind, ...content) {
+  const b = el('div', {class: 'banner ' + (kind || '')}, ...content);
+  $('banners').append(b);
+  return b;
+}
+function fail(e) { banner('err', String(e.message || e)); window.scrollTo({top: 0}); }
+
+/* ------------------------------------------------------------------ picker */
+async function showPicker() {
+  doc = null; meta = null;
+  history.replaceState(null, '', location.pathname + location.search);
+  $('banners').replaceChildren();
+  $('editor').classList.add('hidden'); $('bar2').classList.add('hidden');
+  $('counter').classList.add('hidden'); $('editorButtons').classList.add('hidden'); $('back').classList.add('hidden');
+  $('title').textContent = 'Pick a session'; $('title').classList.add('muted');
+  const box = $('picker'); box.classList.remove('hidden');
+  box.replaceChildren(el('div', {class: 'empty'}, el('span', {class: 'spin'}), ' Reading sessions…'));
+  let data;
+  try { data = await api('sessions'); } catch (e) { box.replaceChildren(); return fail(e); }
+  if (data.direct && !showPicker.openedDirect) { showPicker.openedDirect = true; return openSession(data.direct); }
+  box.replaceChildren();
+  if (!data.projects.length) {
+    box.append(el('div', {class: 'empty', text: 'No sessions found under ' + data.root}));
+    return;
+  }
+  const projects = data.projects.slice();
+  const here = projects.findIndex((p) => p.dir === data.preselect);
+  if (here > 0) projects.unshift(projects.splice(here, 1)[0]);
+  const queue = [];
+  let first = null;
+  for (const p of projects) {
+    const isHere = p.dir === data.preselect;
+    const h = el('h2', {text: p.name + (isHere ? '  (this folder)' : '')});
+    const sec = el('div', {class: 'project' + (isHere ? ' here' : '')}, h,
+      el('div', {class: 'rowhead'}, el('span', {text: 'First prompt'}), el('span', {text: 'Last modified'}), el('span', {text: 'Steps'}), el('span', {text: 'Tokens (approx.)'})));
+    for (const s of p.sessions) {
+      const cells = {p: el('span', {class: 'p muted', text: '…'}), steps: el('span', {class: 'n', text: ''}), tok: el('span', {class: 'n', text: ''})};
+      const row = el('div', {class: 'row', tabindex: '0', title: s.id,
+        onclick: () => openSession(s.path),
+        onkeydown: (ev) => { if (ev.key === 'Enter') openSession(s.path); }},
+        cells.p, el('span', {class: 'n', title: when(s.mtime), text: ago(data.now - s.mtime)}), cells.steps, cells.tok);
+      const fill = (sm) => {
+        cells.p.textContent = sm.prompt || sm.title || '(no user prompt)';
+        cells.p.classList.remove('muted');
+        cells.steps.textContent = sm.steps; cells.tok.textContent = '≈ ' + tok(sm.tokens);
+        if (sm.cwd && h.textContent.startsWith(p.dir)) h.textContent = sm.cwd + (isHere ? '  (this folder)' : '');
+      };
+      if (s.summary) fill(s.summary); else queue.push({s, fill, cells});
+      if (isHere && !first) { first = row; row.classList.add('sel'); }
+      sec.append(row);
+    }
+    box.append(sec);
+  }
+  if (first) first.focus({preventScroll: true});
+  const work = async () => {
+    while (queue.length && !doc) {
+      const job = queue.shift();
+      try { job.fill(await api('summary', null, {path: job.s.path})); }
+      catch (e) { job.cells.p.textContent = '(could not read: ' + e.message + ')'; }
+    }
+  };
+  work(); work(); work();
+}
+
+/* ------------------------------------------------------------------ editor */
+async function openSession(path) {
+  $('banners').replaceChildren();
+  $('picker').replaceChildren(el('div', {class: 'empty'}, el('span', {class: 'spin'}), ' Opening session…'));
+  let data;
+  try { data = await api('open', {path}); } catch (e) { await showPicker(); return fail(e); }
+  doc = data.doc; meta = data.meta; steps = data.steps; counters = data.counters;
+  byId = {}; views = {}; cards = {}; expanded = new Set(); editing = new Set(); sugg = {};
+  offKinds = new Set(); searchIds = null; anchor = null; errSteps = new Set(); savedAt = -1;
+  for (const s of steps) byId[s.id] = s;
+  history.replaceState(null, '', location.pathname + location.search + '#open=' + encodeURIComponent(path));
+  $('picker').classList.add('hidden'); $('picker').replaceChildren();
+  $('editor').classList.remove('hidden'); $('bar2').classList.remove('hidden');
+  $('counter').classList.remove('hidden'); $('editorButtons').classList.remove('hidden'); $('back').classList.remove('hidden');
+  $('title').textContent = meta.title || meta.id; $('title').classList.remove('muted');
+  $('title').title = meta.path;
+  $('search').value = ''; $('marker').checked = meta.marker; $('markerText').textContent = meta.trim_marker;
+  if (meta.maybe_running) {
+    banner('', 'This session was written to ' + Math.max(1, Math.round(meta.age)) + ' seconds ago and may still be running. ' +
+      'You are looking at a snapshot: steps added after it was opened will not appear here or in the fork.');
+  }
+  if (meta.bad_lines.length) banner('', meta.bad_lines.length + ' line(s) of this file are not valid JSON. They are copied through unchanged.');
+  buildChips(); buildList(); paintCounter(); paintSugg();
+}
+
+function view(id) {
+  return views[id] || {id, auto: false, dropped: false, edited: false, rewritten: false, removed: [], media_removed: [], tokens: byId[id].tokens, preview: null};
+}
+function buildChips() {
+  const count = {};
+  for (const s of steps) if (s.group === 'live') count[s.kind] = (count[s.kind] || 0) + 1;
+  const box = $('chips'); box.replaceChildren();
+  for (const k of KINDS) {
+    if (!count[k]) continue;
+    const chip = el('span', {class: 'chip', title: 'Show or hide ' + LABEL[k] + ' steps'},
+      el('i', {style: 'background:var(--k-' + k + ')'}), LABEL[k] + ' ' + count[k]);
+    chip.addEventListener('click', () => {
+      if (offKinds.has(k)) offKinds.delete(k); else offKinds.add(k);
+      chip.classList.toggle('off', offKinds.has(k)); applyFilter();
+    });
+    box.append(chip);
+  }
+}
+function buildList() {
+  const groups = {live: $('gLive'), precompact: $('gPre').lastElementChild, branch: $('gBranch').lastElementChild, sidechain: $('gSide').lastElementChild};
+  for (const g in groups) groups[g].replaceChildren();
+  const n = {live: 0, precompact: 0, branch: 0, sidechain: 0};
+  const frag = {live: document.createDocumentFragment(), precompact: document.createDocumentFragment(), branch: document.createDocumentFragment(), sidechain: document.createDocumentFragment()};
+  for (const s of steps) { n[s.group]++; frag[s.group].append(makeCard(s)); }
+  for (const g in groups) groups[g].append(frag[g]);
+  const set = (id, count, text) => { $(id).classList.toggle('hidden', !count); $(id).open = false; $(id).firstElementChild.textContent = text; };
+  set('gPre', n.precompact, 'Before last compaction · ' + n.precompact + ' step' + (n.precompact === 1 ? '' : 's') + ' · not in the live context, copied unchanged');
+  set('gBranch', n.branch, 'Other branches · ' + n.branch + ' step' + (n.branch === 1 ? '' : 's') + ' left behind by a rewind · not in the live context, copied unchanged');
+  set('gSide', n.sidechain, 'Side conversations · ' + n.sidechain + ' subagent step' + (n.sidechain === 1 ? '' : 's') + ' · copied unchanged');
+  markPairs();
+  const bk = Object.entries(meta.bookkeeping).map(([k, v]) => v + ' ' + k).join(', ');
+  $('foot').textContent = 'Session ' + meta.id + (meta.version ? ' · Claude Code ' + meta.version : '') +
+    (meta.subagent_files ? ' · ' + meta.subagent_files + ' subagent transcript(s) stay in the original session folder' : '') +
+    (bk ? ' · bookkeeping entries not shown: ' + bk : '') + '. Token counts are characters ÷ 4.';
+}
+function markPairs() {
+  const live = steps.filter((s) => s.group === 'live' && !cards[s.id].classList.contains('hidden'));
+  for (const s of steps) cards[s.id].classList.remove('pair-top', 'pair-bottom');
+  for (let i = 0; i + 1 < live.length; i++) {
+    const a = live[i], b = live[i + 1];
+    if (a.kind === 'tool_use' && b.kind === 'tool_result' && a.pair && a.pair === b.pair) {
+      cards[a.id].classList.add('pair-top'); cards[b.id].classList.add('pair-bottom');
+    }
+  }
+}
+function partner(s) {
+  if (!s.pair || s.group !== 'live') return null;
+  return steps.find((o) => o.group === 'live' && o.pair === s.pair && o.id !== s.id) || null;
+}
+function makeCard(s) {
+  const c = el('div', {class: 'card k-' + s.kind, 'data-id': s.id});
+  cards[s.id] = c;
+  const head = el('div', {class: 'head'});
+  head.addEventListener('click', (ev) => { if (!ev.target.closest('button, .tag.pair')) toggleExpand(s.id); });
+  c.append(head, el('div', {class: 'body collapsed'}));
+  if (s.pair) {
+    c.addEventListener('mouseenter', () => { const p = partner(s); if (p) cards[p.id].classList.add('pairhover'); });
+    c.addEventListener('mouseleave', () => { const p = partner(s); if (p) cards[p.id].classList.remove('pairhover'); });
+  }
+  paint(s.id);
+  return c;
+}
+function paint(id) {
+  const s = byId[id], v = view(id), c = cards[id];
+  const locked = !s.droppable && !s.editable;
+  c.classList.toggle('dropped', v.dropped);
+  c.classList.toggle('locked', locked);
+  c.classList.toggle('err', errSteps.has(id));
+  c.classList.toggle('has-sugg', !!sugg[id]);
+  const head = c.firstElementChild;
+  const p = partner(s);
+  const meta_ = el('span', {class: 'meta'},
+    el('span', {text: when(s.ts)}),
+    el('span', {title: 'approximate: characters ÷ 4', text: v.dropped ? '≈ ' + tok(s.tokens) + ' → 0' : (v.tokens !== s.tokens ? '≈ ' + tok(s.tokens) + ' → ' + tok(v.tokens) : '≈ ' + tok(s.tokens)) + ' tok'}));
+  if (s.editable && !v.dropped && s.group === 'live') {
+    meta_.append(el('button', {text: 'Edit', title: 'Rewrite the text of this step', onclick: () => startEdit(id)}));
+  }
+  if (s.droppable) {
+    const auto = !!v.auto;
+    meta_.append(el('button', {class: 'dropbtn', disabled: auto,
+      title: auto ? 'Thinking is dropped with the rest of its turn' : (v.dropped ? 'Restore this step' : 'Drop this step') + ' (Shift-click for a range)',
+      text: v.dropped ? 'Restore' : 'Drop', onclick: (ev) => clickDrop(id, ev)}));
+  }
+  fill(head,
+    el('span', {class: 'num', text: '#' + (s.index + 1)}),
+    el('span', {class: 'label', text: LABEL[s.kind]}),
+    s.tool ? el('span', {class: 'tool', text: s.tool}) : null,
+    s.note ? el('span', {class: 'tag', text: s.note}) : null,
+    s.media ? el('span', {class: 'tag', text: s.media + (s.media === 1 ? ' image' : ' images')}) : null,
+    p ? el('span', {class: 'tag pair', title: 'Jump to the ' + LABEL[p.kind].toLowerCase() + ' of this pair. They are kept or dropped together.',
+      text: (s.kind === 'tool_use' ? '↓ result #' : '↑ call #') + (p.index + 1), onclick: () => jump(p.id)}) : null,
+    v.edited ? el('span', {class: 'tag edited', text: 'edited'}) : null,
+    locked ? el('span', {class: 'tag locked', title: 'Copied through unchanged', text: s.group === 'live' ? 'not editable' : 'unchanged'}) : null,
+    (s.kind === 'thinking' && s.group === 'live') ? el('span', {class: 'tag locked', title: 'Thinking blocks are signed: kept or dropped whole', text: 'signed'}) : null,
+    meta_);
+  // suggestion strip
+  c.querySelectorAll(':scope > .sugg, :scope > .sugg-new').forEach((x) => x.remove());
+  const sg = sugg[id];
+  if (sg) {
+    const noun = s.kind === 'tool_result' ? 'lines' : 'sentences';
+    let label = 'Review', show = null;
+    if (sg.action === 'drop') label = 'Accept';
+    else if (sg.action === 'rewrite') label = 'Accept rewrite (about ' + tok(sg.tokens_after) + ' tokens instead of ' + tok(v.tokens) + ')';
+    else if (sg.removed) {
+      label = 'Accept (cut ' + sg.cut + ' of ' + sg.parts + ' ' + noun + ')';
+      show = el('button', {text: 'Show', title: 'Open the step with the proposed cuts marked', onclick: () => { if (expanded.has(id)) renderBody(id); else toggleExpand(id); }});
+    } else if (s.kind === 'tool_result') label = 'Accept (keep first and last 10 lines)';
+    c.append(el('div', {class: 'sugg'}, el('b', {text: 'Suggested: ' + sg.action}), el('span', {class: 'why', text: sg.reason}),
+      el('button', {text: label, onclick: () => acceptSugg([id])}), show,
+      el('button', {text: 'Dismiss', onclick: () => { delete sugg[id]; paint(id); paintSugg(); applyFilter(); if (expanded.has(id)) renderBody(id); }})));
+    if (sg.action === 'rewrite') c.append(el('div', {class: 'sugg-new'}, 'Would replace the whole tool output with this text, written by the model:', el('pre', {text: sg.text})));
+  }
+  if (!expanded.has(id)) {
+    const body = c.children[1];
+    body.className = 'body collapsed';
+    body.textContent = (v.preview !== null && v.preview !== undefined) ? v.preview : s.text;
+    body.onclick = () => toggleExpand(id);
+  }
+}
+function jump(id) {
+  const c = cards[id];
+  const d = c.closest('details'); if (d) d.open = true;
+  c.scrollIntoView({block: 'center', behavior: 'smooth'});
+  c.classList.add('pairhover'); setTimeout(() => c.classList.remove('pairhover'), 1200);
+}
+
+async function toggleExpand(id) {
+  if (editing.has(id)) return;
+  if (expanded.has(id)) { expanded.delete(id); clearExtras(id); paint(id); return; }
+  expanded.add(id);
+  await renderBody(id);
+}
+function clearExtras(id) {
+  for (const x of cards[id].querySelectorAll(':scope > .tools, :scope > .editbox')) x.remove();
+}
+async function renderBody(id) {
+  const s = byId[id], c = cards[id];
+  let d;
+  try { d = await api('detail', null, {doc, id}); } catch (e) { return fail(e); }
+  if (!expanded.has(id)) return;
+  clearExtras(id);
+  const body = c.children[1];
+  body.className = 'body'; body.onclick = null; body.replaceChildren();
+  const canStrike = s.editable && s.group === 'live' && !d.dropped;
+  if (!canStrike) { body.textContent = s.editable ? d.effective : d.original; return; }
+  const removed = new Set(d.removed);
+  const proposed = new Set((sugg[id] && sugg[id].removed) || []);
+  const isLines = s.kind === 'tool_result';
+  const shown = Math.min(d.units.length, MAX_UNITS);
+  const frag = document.createDocumentFragment();
+  for (let k = 0; k < shown; k++) {
+    const [text, sep, kind] = d.units[k];
+    const u = el(isLines ? 'span' : 'span', {class: (isLines ? 'line' : 'unit' + (kind === 'code' ? ' code' : '')) + (removed.has(k) ? ' x' : (proposed.has(k) ? ' sx' : '')), 'data-k': k, text: text});
+    frag.append(u);
+    if (!isLines && sep) frag.append(document.createTextNode(sep));
+  }
+  body.append(frag);
+  if (d.units.length > shown) body.append(el('div', {class: 'muted', text: '… ' + (d.units.length - shown) + ' more ' + (isLines ? 'lines' : 'sentences') + ' not listed. Use the shortcuts below or Edit.'}));
+  body.onclick = (ev) => {
+    const u = ev.target.closest('[data-k]');
+    if (!u || String(window.getSelection())) return;
+    op({op: 'unit', id, unit: Number(u.getAttribute('data-k'))});
+  };
+  const tools = el('div', {class: 'tools'});
+  if (isLines) {
+    const first = el('input', {type: 'number', min: '0', value: '20'}), last = el('input', {type: 'number', min: '0', value: '20'});
+    tools.append(d.units.length + ' lines · click a line to remove it ·',
+      el('button', {text: 'Keep first', onclick: () => op({op: 'keep_lines', id, head: Number(first.value) || 0})}), first,
+      el('button', {text: 'Keep last', onclick: () => op({op: 'keep_lines', id, tail: Number(last.value) || 0})}), last,
+      el('button', {text: 'Keep both ends', title: 'Keep the first and last lines, remove the middle', onclick: () => op({op: 'keep_lines', id, head: Number(first.value) || 0, tail: Number(last.value) || 0})}));
+    const gone = new Set(d.media_removed);
+    d.media.forEach((m, n) => tools.append(el('button', {text: (gone.has(m) ? 'Restore' : 'Remove') + ' image ' + (n + 1), onclick: () => op({op: 'media', id, unit: m})})));
+  } else {
+    tools.append('Click a sentence to strike it out, click again to restore it.');
+  }
+  if (d.edited) tools.append(el('button', {text: 'Reset', title: 'Bring back the original text', onclick: () => op({op: 'reset', id})}));
+  body.after(tools);
+}
+async function startEdit(id) {
+  if (editing.has(id)) return;
+  let d;
+  try { d = await api('detail', null, {doc, id}); } catch (e) { return fail(e); }
+  editing.add(id); expanded.add(id);
+  const c = cards[id]; clearExtras(id);
+  const body = c.children[1]; body.className = 'body hidden'; body.onclick = null;
+  const ta = el('textarea', {spellcheck: 'false'}); ta.value = d.effective;
+  ta.style.height = Math.min(520, Math.max(140, 22 * (d.effective.split('\n').length + 2))) + 'px';
+  const done = () => { editing.delete(id); renderBody(id); };
+  const box = el('div', {class: 'editbox'}, ta, el('div', {class: 'btns'},
+    el('button', {class: 'primary', text: 'Save', title: 'Keep the new text (Ctrl+Enter)', onclick: async () => { editing.delete(id); await op({op: 'edit', id, text: ta.value}); renderBody(id); }}),
+    el('button', {text: 'Cancel', onclick: done}),
+    el('button', {text: 'Reset', title: 'Bring back the original text', onclick: async () => { editing.delete(id); await op({op: 'reset', id}); renderBody(id); }}),
+    el('span', {class: 'muted', style: 'align-self:center;font-size:12.5px', text: byId[id].kind === 'tool_result' ? 'The model will see exactly this text as the tool output.' : ''})));
+  ta.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) box.querySelector('button.primary').click();
+    if (ev.key === 'Escape') done();
+  });
+  body.after(box); ta.focus();
+}
+
+/* ----------------------------------------------------------------- actions */
+function applyResult(r) {
+  counters = r.counters;
+  for (const v of r.changed) views[v.id] = v;
+  // a suggested cut or rewrite was made for the text as it was: once the step changes, it no longer fits
+  let stale = false;
+  for (const v of r.changed) if (sugg[v.id] && (sugg[v.id].removed || sugg[v.id].text)) { delete sugg[v.id]; stale = true; }
+  if (stale) paintSugg();
+  for (const v of r.changed) {
+    errSteps.delete(v.id);
+    paint(v.id);
+    if (expanded.has(v.id) && !editing.has(v.id)) renderBody(v.id);
+  }
+  paintCounter();
+}
+async function op(o) {
+  if (busy) return;
+  try { applyResult(await api('op', {doc, op: o})); }
+  catch (e) { fail(e); }
+}
+async function history_(name) {
+  try { applyResult(await api(name, {doc})); } catch (e) { fail(e); }
+}
+function visibleLive() { return steps.filter((s) => s.group === 'live' && !cards[s.id].classList.contains('hidden')); }
+function clickDrop(id, ev) {
+  const value = !view(id).dropped;
+  let ids = [id];
+  if (ev.shiftKey && anchor && cards[anchor.id]) {
+    const vis = visibleLive().filter((s) => s.droppable);
+    const a = vis.findIndex((s) => s.id === anchor.id), b = vis.findIndex((s) => s.id === id);
+    if (a >= 0 && b >= 0) {
+      ids = vis.slice(Math.min(a, b), Math.max(a, b) + 1).map((s) => s.id);
+      return op({op: 'drop', ids, value: anchor.value});
+    }
+  }
+  if (anchor && cards[anchor.id]) cards[anchor.id].classList.remove('sel-anchor');
+  anchor = {id, value};
+  op({op: 'drop', ids, value});
+}
+function paintCounter() {
+  const c = counters, box = $('counter');
+  const pct = c.before ? Math.round(100 * (c.before - c.after) / c.before) : 0;
+  fill(box,
+    el('span', {title: 'Approximate tokens in the live context, before → after. Estimated as characters ÷ 4.'},
+      'approx. ', el('b', {text: tok(c.before)}), ' → ', el('b', {text: tok(c.after)}), ' tokens' + (pct ? ' (−' + pct + '%)' : '')),
+    ' · ', el('b', {text: String(c.dropped)}), ' dropped · ', el('b', {text: String(c.edited)}), ' edited · ' + c.steps + ' steps',
+    savedAt === c.undo ? el('span', {class: 'saved', text: ' · saved'}) : null);
+  $('undo').disabled = !c.undo; $('redo').disabled = !c.redo;
+}
+let searchTimer = null;
+$('search').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    const q = $('search').value.trim();
+    try { searchIds = q ? new Set((await api('search', null, {doc, q})).ids) : null; } catch (e) { return fail(e); }
+    applyFilter();
+  }, 180);
+});
+function applyFilter() {
+  let shown = 0, liveTotal = 0;
+  for (const s of steps) {
+    const hide = (s.group === 'live' && offKinds.has(s.kind)) || (searchIds && !searchIds.has(s.id));
+    cards[s.id].classList.toggle('hidden', !!hide);
+    if (s.group === 'live') { liveTotal++; if (!hide) shown++; }
+  }
+  if (searchIds) for (const id of ['gPre', 'gBranch', 'gSide']) {
+    const d = $(id); if (!d.classList.contains('hidden')) d.open = !!d.querySelector('.card:not(.hidden)');
+  }
+  $('noMatch').classList.toggle('hidden', shown > 0 || liveTotal === 0);
+  markPairs();
+}
+$('bulk').addEventListener('click', () => op({op: 'bulk_results', min_tokens: Number($('bulkN').value) || 0}));
+$('marker').addEventListener('change', async () => {
+  try { applyResult(await api('settings', {doc, marker: $('marker').checked})); } catch (e) { fail(e); }
+});
+$('undo').addEventListener('click', () => history_('undo'));
+$('redo').addEventListener('click', () => history_('redo'));
+document.addEventListener('keydown', (ev) => {
+  if (!doc || ev.target.closest('textarea, input, dialog')) return;
+  const z = ev.key.toLowerCase() === 'z', y = ev.key.toLowerCase() === 'y';
+  if ((ev.ctrlKey || ev.metaKey) && z && !ev.shiftKey) { ev.preventDefault(); history_('undo'); }
+  else if ((ev.ctrlKey || ev.metaKey) && ((z && ev.shiftKey) || y)) { ev.preventDefault(); history_('redo'); }
+});
+$('back').addEventListener('click', () => {
+  if (counters && counters.undo && savedAt !== counters.undo && !confirm('Leave this session? Edits that were not saved as a fork are lost.')) return;
+  showPicker();
+});
+window.addEventListener('beforeunload', (ev) => {
+  if (doc && counters && counters.undo && savedAt !== counters.undo) { ev.preventDefault(); ev.returnValue = ''; }
+});
+
+/* -------------------------------------------------------------------- save */
+$('save').addEventListener('click', async () => {
+  $('banners').replaceChildren();
+  for (const id of errSteps) { errSteps.delete(id); paint(id); }
+  $('save').disabled = true;
+  let r;
+  try { r = await api('save', {doc}); } catch (e) { $('save').disabled = false; return fail(e); }
+  $('save').disabled = false;
+  if (!r.ok) {
+    const list = el('ul');
+    for (const e of r.errors) {
+      const first = e.steps && e.steps[0];
+      list.append(el('li', {}, e.msg + ' ', first ? el('button', {class: 'link', text: 'show step #' + (byId[first].index + 1), onclick: () => jump(first)}) : null));
+      for (const id of (e.steps || [])) { errSteps.add(id); paint(id); }
+    }
+    banner('err', el('b', {text: 'Not saved. '}), 'The edited session would not resume cleanly. Fix the highlighted step' + (r.errors.length > 1 ? 's' : '') + ' and save again.', list);
+    window.scrollTo({top: 0});
+    const firstErr = r.errors.find((e) => e.steps && e.steps.length);
+    if (firstErr) jump(firstErr.steps[0]);
+    return;
+  }
+  savedAt = r.counters.undo; counters = r.counters; paintCounter();
+  const d = $('dlg');
+  const copy = el('button', {text: 'Copy', onclick: async () => {
+    try { await navigator.clipboard.writeText(r.command); copy.textContent = 'Copied'; }
+    catch (e) { const sel = window.getSelection(); sel.selectAllChildren(code); copy.textContent = 'Selected: press Ctrl+C'; }
+  }});
+  const code = el('code', {text: r.command});
+  fill(d,
+    el('h3', {text: 'Saved as a new session'}),
+    el('p', {}, 'The original is unchanged. The fork is named ', el('b', {text: r.title}), ' in the resume picker.'),
+    el('div', {class: 'cmd'}, code, copy),
+    el('p', {class: 'muted', text: 'Run it in ' + (meta.cwd || 'the project folder') + '.'}),
+    el('p', {class: 'muted', style: 'font-size:12.5px;overflow-wrap:anywhere', text: 'Session file: ' + r.path + (r.record ? '  ·  Edit record: ' + r.record : '')}),
+    r.warnings.length ? el('p', {class: 'muted', style: 'font-size:12.5px', text: r.warnings.length + ' issue(s) were already in the original session and were left as they are: ' + r.warnings.slice(0, 3).map((w) => w.msg).join('; ') + (r.warnings.length > 3 ? '; …' : '')}) : null,
+    el('div', {class: 'btns'}, el('button', {text: 'Keep editing', onclick: () => d.close()})));
+  d.showModal();
+});
+
+/* ------------------------------------------------------------- suggestions */
+async function runSuggest(full, btn) {
+  const both = [$('suggest'), $('suggestFull')];
+  const label = btn.textContent;
+  both.forEach((x) => { x.disabled = true; });
+  btn.replaceChildren(el('span', {class: 'spin'}), ' Asking…');
+  try {
+    const r = await api('suggest', {doc, full});
+    sugg = {};
+    for (const sg of r.suggestions) if (byId[sg.id] && !view(sg.id).dropped) sugg[sg.id] = sg;
+    // a pair needs only one marker: keep it on the tool call's partner once
+    for (const id of Object.keys(sugg)) { const p = partner(byId[id]); if (p && sugg[p.id] && sugg[id] && sugg[id].action === 'drop' && byId[id].kind === 'tool_use') delete sugg[id]; }
+    for (const s of steps) paint(s.id);
+    paintSugg();
+    const n = Object.keys(sugg).length;
+    $('banners').replaceChildren();
+    banner(r.errors.length ? '' : 'ok', n ? n + ' suggestion' + (n === 1 ? '' : 's') + ' marked on the cards. Nothing has been changed.' : 'The model suggested no cuts.',
+      r.errors.length ? el('ul', {}, ...r.errors.map((e) => el('li', {text: 'Failed: ' + e}))) : null,
+      r.notes && r.notes.length ? el('div', {class: 'muted', text: r.notes.join(' ')}) : null);
+    const first = Object.keys(sugg).sort((a, b) => byId[a].index - byId[b].index)[0];
+    if (first) jump(first);
+  } catch (e) { fail(e); }
+  finally { btn.textContent = label; both.forEach((x) => { x.disabled = false; }); }
+}
+$('suggest').addEventListener('click', (e) => runSuggest(false, e.currentTarget));
+$('suggestFull').addEventListener('click', (e) => runSuggest(true, e.currentTarget));
+function paintSugg() {
+  const n = Object.keys(sugg).length;
+  $('suggBar').classList.toggle('hidden', !n);
+  $('suggCount').textContent = n + ' suggestion' + (n === 1 ? '' : 's');
+}
+async function acceptSugg(ids) {
+  const ops = [], done = [], review = [], drops = [];
+  for (const id of ids) {
+    const sg = sugg[id]; if (!sg) continue;
+    if (sg.action === 'drop') { drops.push(id); done.push(id); }
+    else if (sg.action === 'rewrite') { ops.push({op: 'edit', id, text: sg.text}); done.push(id); }
+    else if (sg.removed) { ops.push({op: 'set_removed', id, removed: sg.removed}); done.push(id); }
+    else if (byId[id].kind === 'tool_result') { ops.push({op: 'keep_lines', id, head: 10, tail: 10}); done.push(id); }
+    else review.push(id);
+  }
+  if (drops.length) ops.unshift({op: 'drop', ids: drops, value: true});
+  for (const id of done) delete sugg[id];
+  if (ids.length === 1) for (const id of review) delete sugg[id];
+  if (ops.length) await op(ops.length === 1 ? ops[0] : {op: 'batch', ops});  // one undo step
+  for (const id of done.concat(ids.length === 1 ? review : [])) paint(id);
+  if (ids.length === 1 && review.length && !expanded.has(review[0])) toggleExpand(review[0]);
+  paintSugg();
+}
+$('acceptAll').addEventListener('click', () => acceptSugg(Object.keys(sugg)));
+$('dismissAll').addEventListener('click', () => { const ids = Object.keys(sugg); sugg = {}; for (const id of ids) paint(id); paintSugg(); });
+
+setInterval(() => { api('ping').catch(() => {}); }, 60000);
+const initial = location.hash.match(/^#open=(.*)$/);
+if (initial) openSession(decodeURIComponent(initial[1])); else showPicker();
+</script>
+</body>
+</html>

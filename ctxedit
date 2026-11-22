@@ -1,0 +1,4 @@
+#!/bin/sh
+# ctxedit launcher: follows symlinks, so it can be linked into a PATH folder.
+self=$(readlink -f "$0")
+exec python3 "$(dirname "$self")/ctxedit.py" "$@"
