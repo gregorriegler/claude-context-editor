@@ -15,5 +15,5 @@
     <path d="M22 52 H90 M22 68 H90" stroke="#ffb65c" stroke-width="2.5" stroke-linecap="round"/>
   </g>
   <text x="124" y="70" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="46" font-weight="700" letter-spacing="-1" fill="#e9e7e2">ctx<tspan fill="#d9822b">edit</tspan></text>
-  <text x="126" y="96" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" fill="#9c988f">manual compaction for Claude Code</text>
+  <text x="126" y="96" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" fill="#9c988f">advanced compaction for Claude Code</text>
 </svg>

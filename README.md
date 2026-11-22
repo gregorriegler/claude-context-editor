@@ -1,12 +1,12 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
-  <img src="docs/logo-light.svg" alt="ctxedit: manual compaction for Claude Code" width="420">
+  <img src="docs/logo-light.svg" alt="ctxedit: advanced compaction for Claude Code" width="420">
 </picture>
 
 # ctxedit
 
 Edit the context of a Claude Code session by hand and save the result as a new,
-forked session. Manual compaction: you decide what stays.
+forked session. Advanced compaction: you decide what stays.
 
 ![ctxedit showing a pytest tool result with a suggested trim: the passing tests struck out, the two failures kept](docs/screenshot.png)
 
