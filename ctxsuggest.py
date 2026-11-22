@@ -207,12 +207,12 @@ def _result_text(stdout):
     return data.get('result') or ''
 
 
-def call_claude(prompt, model=None, timeout=600, env=None):
+def call_claude(prompt, model=None, timeout=600, env=None, system=None):
     exe = shutil.which('claude')
     if not exe:
         raise RuntimeError('the `claude` command was not found on PATH')
     cmd = [exe, '-p', '--output-format', 'json', '--no-session-persistence',
-           '--tools', '', '--strict-mcp-config', '--system-prompt', SYSTEM]
+           '--tools', '', '--strict-mcp-config', '--system-prompt', system or SYSTEM]
     if model:
         cmd += ['--model', model]
     tmp = tempfile.mkdtemp(prefix='ctxedit-suggest-')
@@ -229,19 +229,19 @@ def call_claude(prompt, model=None, timeout=600, env=None):
         raise RuntimeError((p.stderr or p.stdout or 'no output from Claude Code').strip()[-400:])
 
 
-def call_with_fallback(prompt, model=None):
+def call_with_fallback(prompt, model=None, system=None):
     """Use Claude Code as configured. If that fails and ANTHROPIC_API_KEY is
     set, retry once on the Claude Code login instead (a key without credit
     otherwise shadows a working login). Returns (text, note)."""
     try:
-        return call_claude(prompt, model), None
+        return call_claude(prompt, model, system=system), None
     except RuntimeError as first:
         if not os.environ.get('ANTHROPIC_API_KEY'):
             raise
         env = os.environ.copy()
         env.pop('ANTHROPIC_API_KEY', None)
         try:
-            text = call_claude(prompt, model, env=env)
+            text = call_claude(prompt, model, env=env, system=system)
         except RuntimeError:
             raise first
         return text, 'ANTHROPIC_API_KEY failed (%s); used the Claude Code login instead.' % str(first)[:120]
@@ -282,3 +282,179 @@ def suggest(editor, full=False, model=None, caller=call_with_fallback):
             out.append(r)
     return {'suggestions': out, 'errors': errors, 'sent_steps': len(items), 'batches': len(parts),
             'sent_chars': sum(len(p) for p in prompts), 'notes': notes}
+
+
+# ---------------------------------------------------------------- detours
+# "Find detours": one request over an outline of the whole session. The model
+# names stretches that were a side task (yak shaving) and writes a short note
+# to leave in their place.
+
+DETOUR_TAG = '[detour removed] '
+OUTLINE_USER_CHARS = 2000
+OUTLINE_CALL_CHARS = 200
+OUTLINE_OVERLAP = 40
+FILE_TOOLS = {'Edit': 'file_path', 'Write': 'file_path', 'MultiEdit': 'file_path', 'NotebookEdit': 'notebook_path'}
+
+DETOUR_SYSTEM = """You review the outline of a coding-assistant session to find detours: stretches where the work left the main task to do something else first (yak shaving) and later came back to the main task.
+
+You get a JSON list of steps in chronological order. Each has "step" (its position), "type" ("You" is the user, "Claude" the assistant, "Tool call" a tool the assistant ran) and "text". Tool output is not shown, and the user's messages are the best evidence of intent.
+
+Signs of a detour:
+- the user says something else has to be done first, or says "back to", "now continue with", "where were we"
+- work in progress is put aside and picked up again: git stash and git stash pop, a switch to another branch and back, a commit of unrelated work
+- the word "yak" or "yak shaving", "detour", "side quest", "tangent", "unrelated", "while we are at it"
+- a run of steps on files or a topic that have nothing to do with the steps before and after it
+
+A detour is a contiguous range. It starts at the step where the side task begins (usually the user's message that asks for it, or the stash) and ends at the last step before the main task continues (include the stash pop and the assistant's closing message about the side task). Work that the main task needed and built on directly afterwards is still a detour if it was a separate, finished side task; a change of direction that was never returned from is not a detour. If the session ends inside the side task, it is not a detour.
+
+For each detour write a "note": two or three sentences in the assistant's own voice and past tense, to be left in the conversation in place of the whole stretch. It must say what was done and anything the main task now has to know about (renamed things, new dependencies, decisions the user made, work that was put aside and restored). Do not list changed files; they are added automatically. Invent nothing.
+
+Answer with a JSON array only, no prose and no code fence:
+[{"first": <step>, "last": <step>, "reason": "<one line: why this is a detour>", "note": "<replacement note>"}]
+If there is no detour, answer []."""
+
+
+def _call_line(st):
+    """One line for a tool call: the argument that says what it did."""
+    try:
+        args = json.loads(st.text)
+    except ValueError:
+        args = None
+    if isinstance(args, dict):
+        for key in ('command', 'file_path', 'notebook_path', 'pattern', 'url', 'query', 'description', 'prompt', 'skill'):
+            if isinstance(args.get(key), str):
+                return ('%s: %s' % (st.tool, ' '.join(args[key].split())))[:OUTLINE_CALL_CHARS]
+    return ('%s: %s' % (st.tool, ' '.join(st.text.split())))[:OUTLINE_CALL_CHARS]
+
+
+def build_outline(editor):
+    """The whole live session, small: your messages in full, Claude's text as
+    a preview, tool calls as one line, tool output and thinking left out."""
+    out = []
+    for st in editor.s.steps:
+        if st.group != 'live' or editor.is_dropped(st.id):
+            continue
+        if st.kind in ('user', 'summary') and st.editable:
+            text = editor.effective_text(st.id)[:OUTLINE_USER_CHARS]
+        elif st.kind == 'assistant' and st.editable:
+            text = preview(editor.effective_text(st.id), False)
+        elif st.kind == 'tool_use':
+            text = _call_line(st)
+        else:
+            continue
+        out.append({'step': st.index, 'type': LABELS[st.kind], 'text': text})
+    return out
+
+
+def outline_parts(items, max_chars=MAX_BATCH_CHARS, overlap=OUTLINE_OVERLAP):
+    """Normally one part. A very long outline is split, with an overlap so a
+    detour near a border is seen whole by one of the two requests."""
+    parts, start = [], 0
+    while start < len(items):
+        end, chars = start, 0
+        while end < len(items) and (end == start or chars + len(items[end]['text']) <= max_chars):
+            chars += len(items[end]['text'])
+            end += 1
+        parts.append(items[start:end])
+        if end >= len(items):
+            break
+        start = max(end - overlap, start + 1)
+    return parts
+
+
+def parse_detours(text, lo, hi):
+    """Model text -> [{'first', 'last', 'reason', 'note'}], inside [lo, hi],
+    sorted, without overlaps (the earlier one wins)."""
+    text = text.strip()
+    m = re.search(r'```(?:json)?\s*(.*?)```', text, re.S)
+    if m:
+        text = m.group(1).strip()
+    start, end = text.find('['), text.rfind(']')
+    if start < 0 or end < start:
+        raise ValueError('no JSON array in the model reply')
+    data = json.loads(text[start:end + 1])
+    if not isinstance(data, list):
+        raise ValueError('model reply is not a list')
+    found = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        first, last = item.get('first'), item.get('last')
+        if not all(isinstance(x, int) and not isinstance(x, bool) for x in (first, last)):
+            continue
+        if not lo <= first <= last <= hi:
+            continue
+        found.append({'first': first, 'last': last,
+                      'reason': ' '.join(str(item.get('reason', '')).split())[:240],
+                      'note': str(item.get('note', '')).strip()[:1500]})
+    found.sort(key=lambda d: (d['first'], -d['last']))
+    out = []
+    for d in found:
+        if not out or d['first'] > out[-1]['last']:
+            out.append(d)
+    return out
+
+
+def resolve_detour(editor, first, last):
+    """What removing the steps first..last (positions) means in this session:
+    which steps go, which one stays to carry the note, which files changed."""
+    ids, files, anchor, fallback, tokens = [], [], None, None, 0
+    for st in editor.s.steps:
+        if st.group != 'live' or not first <= st.index <= last or editor.is_dropped(st.id):
+            continue
+        if st.droppable:
+            ids.append(st.id)
+            tokens += editor.tokens(st.id)
+        if st.editable and st.droppable and st.kind == 'assistant':
+            anchor = st.id  # the last message from Claude carries the note
+        elif st.editable and st.droppable and st.kind == 'user':
+            fallback = st.id
+        if st.kind == 'tool_use' and st.tool in FILE_TOOLS:
+            try:
+                path = json.loads(st.text).get(FILE_TOOLS[st.tool])
+            except (ValueError, AttributeError):
+                path = None
+            if isinstance(path, str) and path not in files:
+                files.append(path)
+    return {'first': first, 'last': last, 'ids': ids, 'anchor': anchor or fallback,
+            'files': files, 'tokens': tokens}
+
+
+def find_detours(editor, model=None, caller=None):
+    caller = caller or (lambda prompt, m: call_with_fallback(prompt, m, system=DETOUR_SYSTEM))
+    items = build_outline(editor)
+    if not items:
+        return {'detours': [], 'errors': [], 'notes': [], 'sent_steps': 0, 'requests': 0}
+    parts = outline_parts(items)
+
+    def run(n):
+        part = parts[n]
+        head = 'Outline of the session, steps %d to %d' % (part[0]['step'], part[-1]['step'])
+        if len(parts) > 1:
+            head += ' (part %d of %d of a longer session; only report detours that both start and end inside this part)' % (n + 1, len(parts))
+        try:
+            text, note = caller(head + ':\n\n' + json.dumps(part, ensure_ascii=False), model)
+            return parse_detours(text, part[0]['step'], part[-1]['step']), None, note
+        except Exception as ex:
+            return [], 'steps %d-%d: %s' % (part[0]['step'], part[-1]['step'], ex), None
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        results = list(pool.map(run, range(len(parts))))
+    found, errors, notes = [], [], []
+    for got, err, note in results:
+        found += got
+        if err:
+            errors.append(err)
+        if note and note not in notes:
+            notes.append(note)
+    found.sort(key=lambda d: (d['first'], -d['last']))
+    out = []
+    for d in found:
+        if out and d['first'] <= out[-1]['last']:
+            continue  # the same detour seen by two overlapping requests
+        r = resolve_detour(editor, d['first'], d['last'])
+        if len(r['ids']) < 2:
+            continue
+        r.update(reason=d['reason'], note=d['note'], tag=DETOUR_TAG)
+        out.append(r)
+    return {'detours': out, 'errors': errors, 'notes': notes, 'sent_steps': len(items), 'requests': len(parts)}

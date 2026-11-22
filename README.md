@@ -84,6 +84,13 @@ the absolute path of this folder, so run the install script again if you move it
   sentences of Claude's text to keep (the rest is marked as a proposed cut), or
   propose a short `[summarised]` replacement for a tool result. Suggestions are
   shown on the cards and never applied on their own; "Accept all" is one undo step.
+- "Find detours" asks a model for stretches where the work left the main task
+  and came back later (yak shaving): a stash and its pop, "first fix X" and
+  "back to Y", the word "yak". It reads an outline of the whole session (your
+  messages, previews of Claude's, tool calls as one line, no tool output). For
+  each detour it proposes dropping the stretch and leaving a short note in its
+  place; the files changed in the stretch are added to the note. You can move
+  the start and end and edit the note before accepting.
 - Save writes `<new-uuid>.jsonl` next to the original, in the layout of
   Claude Code's own fork, titled `<original title> (edited)`, and shows
   `claude --resume <new-id>`. The original file is only ever read.

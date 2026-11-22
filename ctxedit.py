@@ -304,16 +304,39 @@ class App(object):
             out['counters'] = d['editor'].counters()
         return out
 
-    def api_suggest(self, q, body):
-        d = self.doc(body.get('doc'))
+    def _snapshot(self, d):
+        """A private copy of the edit state, so a slow model call holds no lock."""
         with d['lock']:
             ed = d['editor']
             snapshot = ctxcore.Editor(d['session'], marker=ed.marker, lock_thinking=ed.lock_thinking)
             snapshot.state = copy.deepcopy(ed.state)
+        return snapshot
+
+    def api_suggest(self, q, body):
+        snapshot = self._snapshot(self.doc(body.get('doc')))
         try:
             return ctxsuggest.suggest(snapshot, full=bool(body.get('full')), model=self.suggest_model)
         except RuntimeError as ex:
             raise ApiError(502, str(ex))
+
+    def api_detours(self, q, body):
+        snapshot = self._snapshot(self.doc(body.get('doc')))
+        try:
+            return ctxsuggest.find_detours(snapshot, model=self.suggest_model)
+        except RuntimeError as ex:
+            raise ApiError(502, str(ex))
+
+    def api_detour_range(self, q, body):
+        """The same facts for a range the user moved by hand."""
+        d = self.doc(body.get('doc'))
+        try:
+            first, last = int(body.get('first')), int(body.get('last'))
+        except (TypeError, ValueError):
+            raise ApiError(400, 'first and last required')
+        if first > last:
+            raise ApiError(400, 'empty range')
+        with d['lock']:
+            return ctxsuggest.resolve_detour(d['editor'], first, last)
 
 
 class ApiError(Exception):
@@ -323,7 +346,7 @@ class ApiError(Exception):
 
 
 GET_ROUTES = {'sessions', 'summary', 'detail', 'search', 'ping'}
-POST_ROUTES = {'open', 'op', 'undo', 'redo', 'settings', 'check', 'save', 'suggest'}
+POST_ROUTES = {'open', 'op', 'undo', 'redo', 'settings', 'check', 'save', 'suggest', 'detours', 'detour_range'}
 
 
 def make_handler(app):

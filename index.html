@@ -46,8 +46,20 @@ header { position: sticky; top: 0; z-index: 20; background: var(--bg); border-bo
 .counter .saved { color: var(--ok); }
 .bar2 { padding-top: 0; gap: 8px; }
 .seg { display: inline-flex; white-space: nowrap; }
+.seg button { border-radius: 0; }
+.seg button + button { margin-left: -1px; }
 .seg button:first-child { border-radius: 6px 0 0 6px; }
-.seg button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.seg button:last-child { border-radius: 0 6px 6px 0; }
+.detour { border: 1px solid var(--sugg); border-radius: 8px; background: var(--sugg-bg); padding: 10px 12px; margin: 14px 0 8px; }
+.detour h4 { margin: 0 0 2px; font-size: 14px; color: var(--sugg); }
+.detour .why { color: var(--ink); margin-bottom: 8px; }
+.detour label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 3px; }
+.detour textarea { width: 100%; min-height: 74px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); resize: vertical; }
+.detour .files { font-size: 12.5px; color: var(--muted); margin-top: 4px; word-break: break-all; }
+.detour .ctl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 12.5px; }
+.detour .ctl button { padding: 1px 8px; font-size: 12.5px; }
+.detour .ctl .grow { flex: 1; }
+.card.in-detour { margin-left: 18px; border-right: 3px solid var(--sugg); }
 .chip { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; background: var(--panel); cursor: pointer; user-select: none; white-space: nowrap; }
 .chip i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
 .chip.off { opacity: .45; text-decoration: line-through; }
@@ -154,6 +166,7 @@ dialog .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 1
       <span class="seg">
         <button id="suggest" title="A model marks steps that look safe to drop. It reads a preview of each step: the first 300 and last 100 characters.">Suggest cuts</button>
         <button id="suggestFull" title="The model reads the full text of every step. It can then say which lines or sentences to cut, or propose a short replacement for a tool result. Slower and uses more tokens.">full text</button>
+        <button id="detours" title="A model reads an outline of the whole session and looks for detours: stretches where the work left the main task and came back later (yak shaving). It proposes removing each stretch and leaving a short note in its place.">Find detours</button>
       </span>
       <span id="suggBar" class="hidden" style="display:flex;gap:6px;align-items:center;white-space:nowrap">
         <span id="suggCount" style="color:var(--sugg)"></span>
@@ -203,7 +216,7 @@ const MAX_UNITS = 4000;
 
 let doc = null, meta = null, steps = [], byId = {}, views = {}, cards = {}, counters = null;
 let expanded = new Set(), editing = new Set(), sugg = {}, offKinds = new Set(), searchIds = null;
-let anchor = null, errSteps = new Set(), savedAt = -1, busy = false;
+let anchor = null, errSteps = new Set(), savedAt = -1, busy = false, detours = [];
 
 function el(tag, attrs, ...kids) {
   const e = document.createElement(tag);
@@ -324,7 +337,7 @@ async function openSession(path) {
   let data;
   try { data = await api('open', {path}); } catch (e) { await showPicker(); return fail(e); }
   doc = data.doc; meta = data.meta; steps = data.steps; counters = data.counters;
-  byId = {}; views = {}; cards = {}; expanded = new Set(); editing = new Set(); sugg = {};
+  byId = {}; views = {}; cards = {}; expanded = new Set(); editing = new Set(); sugg = {}; detours = [];
   offKinds = new Set(); searchIds = null; anchor = null; errSteps = new Set(); savedAt = -1;
   for (const s of steps) byId[s.id] = s;
   history.replaceState(null, '', location.pathname + location.search + '#open=' + encodeURIComponent(path));
@@ -674,7 +687,7 @@ $('save').addEventListener('click', async () => {
 
 /* ------------------------------------------------------------- suggestions */
 async function runSuggest(full, btn) {
-  const both = [$('suggest'), $('suggestFull')];
+  const both = [$('suggest'), $('suggestFull'), $('detours')];
   const label = btn.textContent;
   both.forEach((x) => { x.disabled = true; });
   btn.replaceChildren(el('span', {class: 'spin'}), ' Asking…');
@@ -698,6 +711,75 @@ async function runSuggest(full, btn) {
 }
 $('suggest').addEventListener('click', (e) => runSuggest(false, e.currentTarget));
 $('suggestFull').addEventListener('click', (e) => runSuggest(true, e.currentTarget));
+/* ----------------------------------------------------------------- detours */
+async function runDetours() {
+  const all = [$('suggest'), $('suggestFull'), $('detours')], btn = $('detours'), label = btn.textContent;
+  all.forEach((x) => { x.disabled = true; });
+  btn.replaceChildren(el('span', {class: 'spin'}), ' Asking…');
+  try {
+    const r = await api('detours', {doc});
+    detours = r.detours.filter((d) => byId[d.ids[0]]);
+    paintDetours();
+    const n = detours.length;
+    $('banners').replaceChildren();
+    banner(r.errors.length ? '' : 'ok', n ? n + ' detour' + (n === 1 ? '' : 's') + ' found. Nothing has been changed.' : 'The model found no detour.',
+      r.errors.length ? el('ul', {}, ...r.errors.map((e) => el('li', {text: 'Failed: ' + e}))) : null,
+      r.notes && r.notes.length ? el('div', {class: 'muted', text: r.notes.join(' ')}) : null);
+    if (n) detours[0].el.scrollIntoView({block: 'center'});
+  } catch (e) { fail(e); }
+  finally { btn.textContent = label; all.forEach((x) => { x.disabled = false; }); }
+}
+$('detours').addEventListener('click', runDetours);
+function paintDetours() {
+  document.querySelectorAll('.detour').forEach((x) => x.remove());
+  document.querySelectorAll('.card.in-detour').forEach((x) => x.classList.remove('in-detour'));
+  for (const d of detours) {
+    for (const id of d.ids) cards[id].classList.add('in-detour');
+    const a = byId[d.ids[0]], b = byId[d.ids[d.ids.length - 1]], anc = d.anchor && byId[d.anchor];
+    const ta = el('textarea', {spellcheck: 'false'}); ta.value = d.note;
+    ta.addEventListener('input', () => { d.note = ta.value; });
+    const mv = (which, dir, text, title) => el('button', {text, title, onclick: () => moveDetour(d, which, dir)});
+    d.el = el('div', {class: 'detour'},
+      el('h4', {text: 'Detour · steps #' + (a.index + 1) + ' to #' + (b.index + 1) + ' · ' + d.ids.length + ' steps · ≈ ' + tok(d.tokens) + ' tok'}),
+      el('div', {class: 'why', text: d.reason}),
+      anc ? el('label', {text: 'Accepting drops these steps and leaves this note in step #' + (anc.index + 1) + ' (' + LABEL[anc.kind] + '). Leave it empty to drop everything.'})
+          : el('label', {text: 'No step in this range can carry a note, so accepting only drops the steps.'}),
+      anc ? ta : null,
+      anc && d.files.length ? el('div', {class: 'files', text: 'Added to the note: files changed during the detour: ' + d.files.join(', ')}) : null,
+      el('div', {class: 'ctl'}, 'Start',
+        mv('first', -1, '↑ earlier', 'Begin the detour one step earlier'), mv('first', 1, '↓ later', 'Begin the detour one step later'),
+        'End', mv('last', -1, '↑ earlier', 'End the detour one step earlier'), mv('last', 1, '↓ later', 'End the detour one step later'),
+        el('button', {text: 'Show end', onclick: () => jump(b.id)}),
+        el('span', {class: 'grow'}),
+        el('button', {class: 'primary', text: 'Accept', onclick: () => acceptDetour(d)}),
+        el('button', {text: 'Dismiss', onclick: () => { detours = detours.filter((x) => x !== d); paintDetours(); }})));
+    cards[a.id].before(d.el);
+  }
+}
+async function moveDetour(d, which, dir) {
+  // step to the next live, droppable step in that direction
+  const ok = steps.filter((s) => s.group === 'live' && s.droppable && !view(s.id).dropped).map((s) => s.index);
+  const cur = which === 'first' ? byId[d.ids[0]].index : byId[d.ids[d.ids.length - 1]].index;
+  const next = dir < 0 ? Math.max(...ok.filter((i) => i < cur), -1) : Math.min(...ok.filter((i) => i > cur), Infinity);
+  if (next < 0 || next === Infinity) return;
+  const first = which === 'first' ? next : byId[d.ids[0]].index, last = which === 'last' ? next : byId[d.ids[d.ids.length - 1]].index;
+  if (first > last) return;
+  if (detours.some((x) => x !== d && byId[x.ids[0]].index <= last && byId[x.ids[x.ids.length - 1]].index >= first)) return;
+  try {
+    const r = await api('detour_range', {doc, first, last});
+    if (!r.ids.length) return;
+    Object.assign(d, {first: r.first, last: r.last, ids: r.ids, anchor: r.anchor, files: r.files, tokens: r.tokens});
+    paintDetours();
+  } catch (e) { fail(e); }
+}
+async function acceptDetour(d) {
+  const note = d.note.trim(), keep = d.anchor && note ? d.anchor : null;
+  const ops = [{op: 'drop', ids: d.ids.filter((id) => id !== keep), value: true}];
+  if (keep) ops.push({op: 'edit', id: keep, text: d.tag + note + (d.files.length ? '\nFiles changed during the detour: ' + d.files.join(', ') : '')});
+  detours = detours.filter((x) => x !== d);
+  paintDetours();
+  await op(ops.length === 1 ? ops[0] : {op: 'batch', ops});  // one undo step
+}
 function paintSugg() {
   const n = Object.keys(sugg).length;
   $('suggBar').classList.toggle('hidden', !n);
