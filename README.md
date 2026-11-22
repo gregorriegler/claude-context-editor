@@ -23,7 +23,7 @@ the `claude` command. Developed and tested on Linux (WSL) with Python 3.10 and
 Claude Code 2.1.330; not tried on macOS or native Windows.
 
 ```
-git clone <this repo> && cd claude-context-editor
+git clone https://github.com/gregorriegler/claude-context-editor && cd claude-context-editor
 ln -s "$PWD/ctxedit" ~/.local/bin/ctxedit    # optional: `ctxedit` on your PATH
 ./install-slash-command.sh                    # optional: /ctxedit inside Claude Code
 ```
