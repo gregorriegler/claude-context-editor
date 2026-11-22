@@ -91,3 +91,7 @@ Problems that were already in the original session are reported as warnings.
   fork still refers to them.
 - The session format is undocumented. `FORMAT.md` was written against Claude Code
   2.1.288 to 2.1.330; re-check after a major update.
+
+## License
+
+MIT, see `LICENSE`.
