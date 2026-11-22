@@ -13,6 +13,21 @@ forked session. Manual compaction: you decide what stays.
 *"Suggest cuts (full text)" on a demo session: the model proposes keeping only
 the failures of a 110-line test log. Nothing changes until you accept.*
 
+## Motivation
+
+This tool started with a video,
+[NVIDIA Solves Context Rot, Invents New State Space Model](https://www.youtube.com/watch?v=4yaNxPU9pxI),
+about the paper [You don't need long context](https://arxiv.org/abs/2611.05306)
+(Belcak et al., NVIDIA, November 2026). The paper finds that, with frequent
+compaction, models "sacrifice little to no task accuracy" in a short context.
+
+The idea is that you don't need a 1M-token window, you need better compaction.
+Context rot is a dilution problem, not a size problem. In the paper the model
+writes its own compaction; ctxedit lets you do it by hand, or review what an
+LLM suggests, removing what dilutes and keeping the rest word for word.
+
+## Usage
+
 ```
 ./ctxedit                 # session picker (preselects the project of the current folder)
 ./ctxedit <session-id>    # open one session
