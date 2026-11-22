@@ -3,6 +3,11 @@
 Edit the context of a Claude Code session by hand and save the result as a new,
 forked session. Manual compaction: you decide what stays.
 
+![ctxedit showing a pytest tool result with a suggested trim: the passing tests struck out, the two failures kept](docs/screenshot.png)
+
+*"Suggest cuts (full text)" on a demo session: the model proposes keeping only
+the failures of a 110-line test log. Nothing changes until you accept.*
+
 ```
 ./ctxedit                 # session picker (preselects the project of the current folder)
 ./ctxedit <session-id>    # open one session
