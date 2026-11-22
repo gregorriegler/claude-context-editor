@@ -303,6 +303,7 @@ Signs of a detour:
 - the user says something else has to be done first, or says "back to", "now continue with", "where were we"
 - work in progress is put aside and picked up again: git stash and git stash pop, a switch to another branch and back, a commit of unrelated work
 - the word "yak" or "yak shaving", "detour", "side quest", "tangent", "unrelated", "while we are at it"
+- a fix to the working environment instead of the project: the machine, shell, editor, terminal or the assistant's own configuration (installing or repairing a tool, a keyboard shortcut, a setting, a permission, a login), after which the project work goes on
 - a run of steps on files or a topic that have nothing to do with the steps before and after it
 
 A detour is a contiguous range. It starts at the step where the side task begins (usually the user's message that asks for it, or the stash) and ends at the last step before the main task continues (include the stash pop and the assistant's closing message about the side task). Work that the main task needed and built on directly afterwards is still a detour if it was a separate, finished side task; a change of direction that was never returned from is not a detour. If the session ends inside the side task, it is not a detour.
