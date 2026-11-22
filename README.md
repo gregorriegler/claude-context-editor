@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+  <img src="docs/logo-light.svg" alt="ctxedit: manual compaction for Claude Code" width="420">
+</picture>
+
 # ctxedit
 
 Edit the context of a Claude Code session by hand and save the result as a new,
