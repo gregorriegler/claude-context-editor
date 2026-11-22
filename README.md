@@ -5,13 +5,21 @@
 
 # ctxedit
 
-Edit the context of a Claude Code session by hand and save the result as a new,
-forked session. Advanced compaction: you decide what stays.
+Clean up the context of a Claude Code session and continue in a fork. ctxedit
+finds dead ends, bloated tool output and whole detours, and suggests what to
+cut. You review and accept, or edit any step yourself. Everything you keep
+stays word for word.
 
-![ctxedit showing a pytest tool result with a suggested trim: the passing tests struck out, the two failures kept](docs/screenshot.png)
+![ctxedit showing a detected detour: a stash, a side fix and a stash pop, with the note proposed to replace them](docs/screenshot-detour.png)
 
-*"Suggest cuts (full text)" on a demo session: the model proposes keeping only
-the failures of a 110-line test log. Nothing changes until you accept.*
+*"Find detours" on a demo session: the model spots a yak-shaving stretch
+between a `git stash` and its pop, and proposes a short note to leave in its
+place.*
+
+![ctxedit showing a pytest tool result with a suggested trim: the passing tests struck out, the two failures kept](docs/screenshot-trim.png)
+
+*"Suggest cuts (full text)": the model proposes keeping only the failures of a
+110-line test log. Nothing changes until you accept.*
 
 ## Motivation
 
