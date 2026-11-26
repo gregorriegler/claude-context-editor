@@ -16,6 +16,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -440,6 +441,47 @@ def open_browser(url):
         return False
 
 
+def detach(argv):
+    """Start the same command again as a background process of its own and return.
+
+    The child is cut loose from the terminal and from the process that called
+    us (a new session on Linux/macOS, a detached process on Windows), so it
+    keeps running after the caller is gone. Its output goes to a private log
+    file. We wait until it reports its URL, or until it has failed.
+    """
+    fd, log = tempfile.mkstemp(prefix='ctxedit-', suffix='.log')
+    env = dict(os.environ, CTXEDIT_DETACHED='1', PYTHONUNBUFFERED='1')
+    kw = {}
+    if os.name == 'nt':
+        kw['creationflags'] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kw['start_new_session'] = True
+    with os.fdopen(fd, 'w') as out:
+        child = subprocess.Popen([sys.executable, os.path.abspath(__file__)] + list(argv),
+                                 stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                                 env=env, **kw)
+    deadline = time.time() + 15
+    text = ''
+    while time.time() < deadline:
+        with open(log, encoding='utf-8', errors='replace') as f:
+            text = f.read()
+        m = re.search(r'http://\S+', text)
+        if m:
+            print('ctxedit is running in the background at\n  %s\npid %d, log: %s' % (m.group(0), child.pid, log))
+            return 0
+        if child.poll() is not None:
+            break
+        time.sleep(0.1)
+    if child.poll() is None:
+        child.kill()
+    print('ctxedit failed to start in the background:\n%s' % (text.strip() or '(no output)'))
+    try:
+        os.unlink(log)
+    except OSError:
+        pass
+    return 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog='ctxedit', description='Edit the context of a Claude Code session and save it as a fork.')
     ap.add_argument('target', nargs='?', help='session id or path to a .jsonl session file')
@@ -449,7 +491,11 @@ def main(argv=None):
                     help='model for "Suggest cuts" (default: sonnet)')
     ap.add_argument('--idle-exit', type=float, default=0, metavar='MINUTES',
                     help='stop by itself after this many minutes without a request (for background use)')
+    ap.add_argument('--detach', action='store_true',
+                    help='start in the background, print the URL and return')
     args = ap.parse_args(argv)
+    if args.detach and not os.environ.get('CTXEDIT_DETACHED'):
+        return detach(sys.argv[1:] if argv is None else argv)
 
     direct = resolve_target(args.target) if args.target else None
     app = App(os.getcwd(), direct=direct, suggest_model=args.suggest_model)
@@ -457,7 +503,9 @@ def main(argv=None):
     server.daemon_threads = True
     app.port = server.server_address[1]
     url = 'http://127.0.0.1:%d/?t=%s' % (app.port, app.token)
-    print('ctxedit is running at\n  %s\nPress Ctrl+C to stop.' % url, flush=True)
+    print('ctxedit is running at\n  %s' % url, flush=True)
+    if not args.detach:
+        print('Press Ctrl+C to stop.', flush=True)
     if not args.no_browser:
         open_browser(url)
     if args.idle_exit > 0:

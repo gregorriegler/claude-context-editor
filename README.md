@@ -46,7 +46,8 @@ It starts a server on `127.0.0.1` (random port, random token in the URL) and
 opens the editor in the browser.
 
 Options: `--no-browser`, `--port N`, `--idle-exit MINUTES` (stop by itself when
-no page has been open for that long), `--suggest-model NAME` (default `sonnet`,
+no page has been open for that long), `--detach` (start in the background,
+print the URL and return), `--suggest-model NAME` (default `sonnet`,
 or set `CTXEDIT_SUGGEST_MODEL`).
 
 ## Install
