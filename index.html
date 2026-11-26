@@ -669,16 +669,21 @@ $('save').addEventListener('click', async () => {
   }
   savedAt = r.counters.undo; counters = r.counters; paintCounter();
   const d = $('dlg');
-  const copy = el('button', {text: 'Copy', onclick: async () => {
-    try { await navigator.clipboard.writeText(r.command); copy.textContent = 'Copied'; }
-    catch (e) { const sel = window.getSelection(); sel.selectAllChildren(code); copy.textContent = 'Selected: press Ctrl+C'; }
-  }});
-  const code = el('code', {text: r.command});
+  const cmdRow = (text) => {
+    const code = el('code', {text});
+    const copy = el('button', {text: 'Copy', onclick: async () => {
+      try { await navigator.clipboard.writeText(text); copy.textContent = 'Copied'; }
+      catch (e) { const sel = window.getSelection(); sel.selectAllChildren(code); copy.textContent = 'Selected: press Ctrl+C'; }
+    }});
+    return el('div', {class: 'cmd'}, code, copy);
+  };
   fill(d,
     el('h3', {text: 'Saved as a new session'}),
     el('p', {}, 'The original is unchanged. The fork is named ', el('b', {text: r.title}), ' in the resume picker.'),
-    el('div', {class: 'cmd'}, code, copy),
-    el('p', {class: 'muted', text: 'Run it in ' + (meta.cwd || 'the project folder') + '.'}),
+    el('p', {class: 'muted', style: 'margin-bottom:0', text: 'In a terminal, in ' + (meta.cwd || 'the project folder') + ':'}),
+    cmdRow(r.command),
+    el('p', {class: 'muted', style: 'margin-bottom:0', text: 'Or inside a running Claude Code session of this project:'}),
+    cmdRow(r.slash_command),
     el('p', {class: 'muted', style: 'font-size:12.5px;overflow-wrap:anywhere', text: 'Session file: ' + r.path + (r.record ? '  ·  Edit record: ' + r.record : '')}),
     r.warnings.length ? el('p', {class: 'muted', style: 'font-size:12.5px', text: r.warnings.length + ' issue(s) were already in the original session and were left as they are: ' + r.warnings.slice(0, 3).map((w) => w.msg).join('; ') + (r.warnings.length > 3 ? '; …' : '')}) : null,
     el('div', {class: 'btns'}, el('button', {text: 'Keep editing', onclick: () => d.close()})));

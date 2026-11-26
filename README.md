@@ -67,7 +67,8 @@ ln -s "$PWD/ctxedit" ~/.local/bin/ctxedit    # optional: `ctxedit` on your PATH
 After `./install-slash-command.sh`, typing `/ctxedit` in a Claude Code session
 starts the editor in the background on that session and opens it in the
 browser. The editor shows a snapshot taken at that moment. After "Save as
-fork", `/exit` and run the `claude --resume <new-id>` command it shows. The
+fork", type the `/resume <new-id>` command it shows (or `/exit` and run
+`claude --resume <new-id>`). The
 background editor stops 10 minutes after its tab is closed.
 
 The command is installed as `~/.claude/skills/ctxedit/SKILL.md` with
@@ -103,7 +104,8 @@ the absolute path of this folder, so run the install script again if you move it
   the start and end and edit the note before accepting.
 - Save writes `<new-uuid>.jsonl` next to the original, in the layout of
   Claude Code's own fork, titled `<original title> (edited)`, and shows
-  `claude --resume <new-id>`. The original file is only ever read.
+  `claude --resume <new-id>` or, inside Claude Code, `/resume <new-id>`. The
+  original file is only ever read.
   An edit record goes to `~/.ctxedit/edits/<new-id>.json`.
 
 Saving is blocked, with the failing step highlighted, if the edit would leave

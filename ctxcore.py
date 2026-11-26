@@ -1017,4 +1017,5 @@ def save(editor, edits_dir=None, new_id=None, dest_dir=None):
             }, f, indent=2)
     return {'ok': True, 'new_id': report['new_id'], 'path': dest, 'record': record_path,
             'warnings': warnings, 'title': report['title'], 'lines': len(lines),
-            'command': 'claude --resume %s' % report['new_id']}
+            'command': 'claude --resume %s' % report['new_id'],
+            'slash_command': '/resume %s' % report['new_id']}

@@ -10,5 +10,5 @@ The user typed /ctxedit. The context editor for this session has already been st
 
 Reply with one or two short lines and nothing else, and call no tools:
 
-- If the output above says "running in the background": say the editor opened in the browser with a snapshot of this session; that after "Save as fork" they should /exit and run the `claude --resume <new-id>` command it shows; and that if no tab appeared, they can open the URL shown above. The editor stops by itself 10 minutes after its tab is closed.
+- If the output above says "running in the background": say the editor opened in the browser with a snapshot of this session; that after "Save as fork" they can continue with the `/resume <new-id>` command it shows (or /exit and run `claude --resume <new-id>`); and that if no tab appeared, they can open the URL shown above. The editor stops by itself 10 minutes after its tab is closed.
 - Otherwise: show the output text as is.

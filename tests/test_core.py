@@ -220,6 +220,7 @@ class PlainChat(Base):
         self.assertEqual(rec['source_session_id'], SID)
         self.assertEqual([d['id'] for d in rec['dropped']], ['a2:0'])
         self.assertEqual(out['command'], 'claude --resume ' + out['new_id'])
+        self.assertEqual(out['slash_command'], '/resume ' + out['new_id'])
 
     def test_header_counter_matches_saved_file(self):
         s, ed = self.open(plain_chat)
