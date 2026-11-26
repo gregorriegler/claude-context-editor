@@ -164,7 +164,7 @@ dialog .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 1
     <span id="counter" class="counter hidden"></span>
     <span id="editorButtons" class="hidden" style="display:flex;gap:8px;align-items:center">
       <span class="seg">
-        <button id="detours" title="A model reads an outline of the whole session and looks for detours: stretches where the work left the main task and came back later (yak shaving). It proposes removing each stretch and leaving a short note in its place.">Find detours</button>
+        <button id="detours" title="A model reads an outline of the whole session, splits it into phases and judges each one: is it finished, and does the later work need only its outcome? That covers yak shaving, and also a finished refactoring or investigation. It proposes removing each such stretch and leaving a short note in its place.">Find detours</button>
         <button id="suggest" title="A model marks steps that look safe to drop. It reads a preview of each step: the first 300 and last 100 characters.">Suggest cuts</button>
         <button id="suggestFull" title="The model reads the full text of every step. It can then say which lines or sentences to cut, or propose a short replacement for a tool result. Slower and uses more tokens.">full text</button>
       </span>

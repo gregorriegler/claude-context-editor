@@ -286,8 +286,9 @@ def suggest(editor, full=False, model=None, caller=call_with_fallback):
 
 # ---------------------------------------------------------------- detours
 # "Find detours": one request over an outline of the whole session. The model
-# names stretches that were a side task (yak shaving) and writes a short note
-# to leave in their place.
+# splits it into phases and names those that are finished and whose details the
+# later work no longer needs (a yak shave, but also a finished refactoring), and
+# writes a short note to leave in their place.
 
 DETOUR_TAG = '[detour removed] '
 OUTLINE_USER_CHARS = 2000
@@ -295,24 +296,32 @@ OUTLINE_CALL_CHARS = 200
 OUTLINE_OVERLAP = 40
 FILE_TOOLS = {'Edit': 'file_path', 'Write': 'file_path', 'MultiEdit': 'file_path', 'NotebookEdit': 'notebook_path'}
 
-DETOUR_SYSTEM = """You review the outline of a coding-assistant session to find detours: stretches where the work left the main task to do something else first (yak shaving) and later came back to the main task.
+DETOUR_SYSTEM = """You review the outline of a coding-assistant session to find stretches of it that can be replaced by a short note without the rest of the work losing anything.
 
-You get a JSON list of steps in chronological order. Each has "step" (its position), "type" ("You" is the user, "Claude" the assistant, "Tool call" a tool the assistant ran) and "text". Tool output is not shown, and the user's messages are the best evidence of intent.
+You get a JSON list of steps in chronological order. Each has "step" (its position), "type" ("You" is the user, "Claude" the assistant, "Tool call" a tool the assistant ran) and "text". Tool output is not shown and the assistant's longer messages are shortened.
 
-Signs of a detour:
-- the user says something else has to be done first, or says "back to", "now continue with", "where were we"
-- work in progress is put aside and picked up again: git stash and git stash pop, a switch to another branch and back, a commit of unrelated work
-- the word "yak" or "yak shaving", "detour", "side quest", "tangent", "unrelated", "while we are at it"
-- a fix to the working environment instead of the project: the machine, shell, editor, terminal or the assistant's own configuration (installing or repairing a tool, a keyboard shortcut, a setting, a permission, a login), after which the project work goes on
-- a run of steps on files or a topic that have nothing to do with the steps before and after it
+Work in two passes.
 
-A detour is a contiguous range. It starts at the step where the side task begins (usually the user's message that asks for it, or the stash) and ends at the last step before the main task continues (include the stash pop and the assistant's closing message about the side task). Work that the main task needed and built on directly afterwards is still a detour if it was a separate, finished side task; a change of direction that was never returned from is not a detour. If the session ends inside the side task, it is not a detour.
+1. Split the session into phases. A phase is a run of consecutive steps that pursues one goal: tracking down a bug, a refactoring done in several steps, a feature, a repair of the working environment, a side task, a discussion that ends in a decision. Go by what happened: what the user asked for, what the assistant says it is doing, which files and commands the tool calls touch, and where that changes. Do not go by particular words, and do not expect anyone to have announced that a phase began or ended.
 
-For each detour write a "note": two or three sentences in the assistant's own voice and past tense, to be left in the conversation in place of the whole stretch. It must say what was done and anything the main task now has to know about (renamed things, new dependencies, decisions the user made, work that was put aside and restored). Do not list changed files; they are added automatically. Invent nothing.
+2. Judge each phase by what the later steps do with it. Ask: after this phase was over, did the work that followed need how it went, or only how it came out? A phase can be replaced by a note when both hold:
+- it is finished: its goal was reached or given up, and the session moved on to something else
+- what follows uses at most its outcome (the files as they are now, a decision, a fact that was found), and two or three sentences can state that outcome
+This is true of a side task or yak shave that the work came back from, and just as much of a finished refactoring, clean-up, investigation or environment fix that belonged to the main task. Whether a phase was on or off the main task does not matter; whether its details are still in use does.
+
+Do not report:
+- the phase the session ends in, or anything still in progress, undecided or failing
+- a phase whose details later steps keep working with: a design that is still being implemented, an error that is still being chased, code that is still being changed in the way discussed there
+- the steps where the user sets the task or gives instructions that still apply, unless the note can carry them in full
+- a phase of fewer than four steps
+
+Each reported phase is one contiguous range. It starts at the step where the phase begins (usually the user's message that asks for it, or the assistant's first step towards it) and ends at its last step, including the assistant's closing message about it. Ranges must not overlap. When in doubt about a border, report the smaller range.
+
+For each one write a "note": two or three sentences in the assistant's own voice and past tense, to be left in the conversation in place of the whole stretch. It must say what was done and everything the later work relies on (the outcome, renamed things, new dependencies, decisions the user made, work that was put aside and restored). Do not list changed files; they are added automatically. Invent nothing.
 
 Answer with a JSON array only, no prose and no code fence:
-[{"first": <step>, "last": <step>, "reason": "<one line: why this is a detour>", "note": "<replacement note>"}]
-If there is no detour, answer []."""
+[{"first": <step>, "last": <step>, "reason": "<one line: what the phase was, and why the later work only needs its outcome>", "note": "<replacement note>"}]
+If no phase qualifies, answer []."""
 
 
 def _call_line(st):
