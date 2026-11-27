@@ -450,7 +450,7 @@ def detach(argv):
     file. We wait until it reports its URL, or until it has failed.
     """
     fd, log = tempfile.mkstemp(prefix='ctxedit-', suffix='.log')
-    env = dict(os.environ, CTXEDIT_DETACHED='1', PYTHONUNBUFFERED='1')
+    env = dict(os.environ, CTXEDIT_DETACHED='1', PYTHONUNBUFFERED='1', PYTHONIOENCODING='utf-8')
     kw = {}
     if os.name == 'nt':
         kw['creationflags'] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP

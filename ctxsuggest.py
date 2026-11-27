@@ -217,7 +217,8 @@ def call_claude(prompt, model=None, timeout=600, env=None, system=None):
         cmd += ['--model', model]
     tmp = tempfile.mkdtemp(prefix='ctxedit-suggest-')
     try:
-        p = subprocess.run(cmd, input=prompt, capture_output=True, text=True, cwd=tmp,
+        # always UTF-8: the default on Windows is a legacy code page that cannot hold emoji or arrows
+        p = subprocess.run(cmd, input=prompt, capture_output=True, encoding='utf-8', errors='replace', cwd=tmp,
                            timeout=timeout, env=env if env is not None else os.environ.copy())
     except subprocess.TimeoutExpired:
         raise RuntimeError('Claude Code did not answer within %d seconds' % timeout)

@@ -1,4 +1,13 @@
 #!/bin/sh
 # ctxedit launcher: follows symlinks, so it can be linked into a PATH folder.
 self=$(readlink -f "$0")
-exec python3 "$(dirname "$self")/ctxedit.py" "$@"
+script="$(dirname "$self")/ctxedit.py"
+# Windows often has `python` or the `py` launcher but no `python3`, or a
+# `python3` that is only a Store placeholder; take the first one that really runs.
+for py in python3 python "py -3"; do
+  if $py -c 'import sys; sys.exit(sys.version_info < (3,))' >/dev/null 2>&1; then
+    exec $py "$script" "$@"
+  fi
+done
+echo "ctxedit: no Python 3 found (tried python3, python, py -3)" >&2
+exit 127

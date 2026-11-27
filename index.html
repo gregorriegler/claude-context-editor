@@ -760,6 +760,7 @@ function paintDetours() {
         el('button', {text: 'Dismiss', onclick: () => { detours = detours.filter((x) => x !== d); paintDetours(); }})));
     cards[a.id].before(d.el);
   }
+  paintSugg();
 }
 async function moveDetour(d, which, dir) {
   // step to the next live, droppable step in that direction
@@ -777,18 +778,27 @@ async function moveDetour(d, which, dir) {
     paintDetours();
   } catch (e) { fail(e); }
 }
-async function acceptDetour(d) {
+function detourOps(d) {
   const note = d.note.trim(), keep = d.anchor && note ? d.anchor : null;
   const ops = [{op: 'drop', ids: d.ids.filter((id) => id !== keep), value: true}];
   if (keep) ops.push({op: 'edit', id: keep, text: d.tag + note + (d.files.length ? '\nFiles changed during the detour: ' + d.files.join(', ') : '')});
-  detours = detours.filter((x) => x !== d);
+  return ops;
+}
+async function acceptDetours(list) {
+  const ops = list.flatMap(detourOps);
+  if (!ops.length) return;
+  detours = detours.filter((x) => !list.includes(x));
   paintDetours();
   await op(ops.length === 1 ? ops[0] : {op: 'batch', ops});  // one undo step
 }
+const acceptDetour = (d) => acceptDetours([d]);
 function paintSugg() {
-  const n = Object.keys(sugg).length;
-  $('suggBar').classList.toggle('hidden', !n);
-  $('suggCount').textContent = n + ' suggestion' + (n === 1 ? '' : 's');
+  const n = Object.keys(sugg).length, m = detours.length;
+  const parts = [];
+  if (m) parts.push(m + ' detour' + (m === 1 ? '' : 's'));
+  if (n) parts.push(n + ' suggestion' + (n === 1 ? '' : 's'));
+  $('suggBar').classList.toggle('hidden', !n && !m);
+  $('suggCount').textContent = parts.join(', ');
 }
 async function acceptSugg(ids) {
   const ops = [], done = [], review = [], drops = [];
@@ -808,8 +818,8 @@ async function acceptSugg(ids) {
   if (ids.length === 1 && review.length && !expanded.has(review[0])) toggleExpand(review[0]);
   paintSugg();
 }
-$('acceptAll').addEventListener('click', () => acceptSugg(Object.keys(sugg)));
-$('dismissAll').addEventListener('click', () => { const ids = Object.keys(sugg); sugg = {}; for (const id of ids) paint(id); paintSugg(); });
+$('acceptAll').addEventListener('click', async () => { await acceptDetours(detours.slice()); await acceptSugg(Object.keys(sugg)); });
+$('dismissAll').addEventListener('click', () => { const ids = Object.keys(sugg); sugg = {}; detours = []; for (const id of ids) paint(id); paintDetours(); });
 
 setInterval(() => { api('ping').catch(() => {}); }, 60000);
 const initial = location.hash.match(/^#open=(.*)$/);
